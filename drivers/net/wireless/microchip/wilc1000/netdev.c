@@ -29,6 +29,16 @@
 #define __WILC3000_FW(api)		WILC3000_FW_PREFIX #api ".bin"
 #define WILC3000_FW(api)		__WILC3000_FW(api)
 
+#define RIO0_FW_PREFIX			"mchp/rio0_wifi_firmware"
+#define __RIO0_FW(api)			RIO0_FW_PREFIX #api ".bin"
+#define FW_RIO_0(api)			__RIO0_FW(api)
+
+#define WILC_FIRMWARE_START_TIMEOUT		500
+#define RIO0_FIRMWARE_START_TIMEOUT		10000
+
+/* temp code to set default mac_address when not configured */
+char default_mac[ETH_ALEN] = {0xFC, 0xC2, 0x3D, 0x0E, 0x50, 0x6B};
+
 static int wilc_mac_open(struct net_device *ndev);
 static int wilc_mac_close(struct net_device *ndev);
 
@@ -371,29 +381,33 @@ static int wilc_txq_task(void *vp)
 	return 0;
 }
 
-static int wilc_wlan_get_firmware(struct net_device *dev)
+static int wilc_wlan_get_firmware(struct wilc *wilc)
 {
-	struct wilc_vif *vif = netdev_priv(dev);
-	struct wilc *wilc = vif->wilc;
 	const struct firmware *wilc_fw;
 	char *firmware;
 	int ret;
 
 	if (wilc->chip == WILC_3000) {
-		PRINT_INFO(dev, INIT_DBG, "Detect chip WILC3000\n");
+		pr_info("Detect chip WILC3000\n");
 		firmware = WILC3000_FW();
 	} else if (wilc->chip == WILC_1000) {
-		PRINT_INFO(dev, INIT_DBG, "Detect chip WILC1000\n");
+		pr_info("Detect chip WILC1000\n");
 		firmware = WILC1000_FW();
+	} else if (wilc->chip == RIO_0) {
+		dev_dbg(wilc->dev, "Detect chip RIO-0\n");
+		firmware = FW_RIO_0();
 	} else {
 		return -EINVAL;
 	}
-
-	PRINT_INFO(dev, INIT_DBG, "loading firmware %s\n", firmware);
+	pr_info("loading firmware %s\n", firmware);
 
 	ret = request_firmware(&wilc_fw, firmware, wilc->dev);
 	if (ret != 0) {
-		PRINT_ER(dev, "%s - firmware not available\n", firmware);
+		if (wilc->chip != RIO_0) {		
+			pr_err("%s - firmware not available\n", firmware);
+		} else {
+			pr_err("Use pre-installed firmware for WILC-SO2/RIO-0 LC\n");
+		}
 		return -EINVAL;
 	}
 	wilc->firmware = wilc_fw;
@@ -406,43 +420,58 @@ static int wilc_start_firmware(struct net_device *dev)
 	struct wilc_vif *vif = netdev_priv(dev);
 	struct wilc *wilc = vif->wilc;
 	int ret = 0;
+	unsigned int m;
 
 	PRINT_INFO(vif->ndev, INIT_DBG, "Starting Firmware ...\n");
 
-	ret = wilc_wlan_start(wilc);
+	if (wilc->chip == RIO_0) {
+		ret = wilc_wlan_start_rio0_fw(wilc);
+		m = RIO0_FIRMWARE_START_TIMEOUT;
+	} else {
+		ret = wilc_wlan_start(wilc);
+		m = WILC_FIRMWARE_START_TIMEOUT;
+	}
 	if (ret < 0) {
 		PRINT_ER(dev, "Failed to start Firmware\n");
 		return ret;
 	}
+
 	PRINT_INFO(vif->ndev, INIT_DBG, "Waiting for FW to get ready ...\n");
 
 	if (!wait_for_completion_timeout(&wilc->sync_event,
-					 msecs_to_jiffies(500))) {
+					 msecs_to_jiffies(m))) {
 		PRINT_INFO(vif->ndev, INIT_DBG, "Firmware start timed out\n");
 		return -ETIME;
 	}
-	PRINT_INFO(vif->ndev, INIT_DBG, "Firmware successfully started\n");
 
+	if (wilc->mac_status == WILC_MAC_STATUS_PRE_INIT)
+		return -ETIME;
+
+	PRINT_INFO(vif->ndev, INIT_DBG, "Firmware successfully started\n");
+	wilc->initialized = 1;
 	return 0;
 }
 
-static int wilc_firmware_download(struct net_device *dev)
+static int wilc_firmware_download(struct wilc *wilc)
 {
-	struct wilc_vif *vif = netdev_priv(dev);
-	struct wilc *wilc = vif->wilc;
 	int ret = 0;
 
 	if (!wilc->firmware) {
-		netdev_err(dev, "Firmware buffer is NULL\n");
-		return -ENOBUFS;
+		pr_err("Firmware buffer is NULL\n");
+		ret = -ENOBUFS;
 	}
-	PRINT_INFO(vif->ndev, INIT_DBG, "Downloading Firmware ...\n");
+	if (wilc->chip != RIO_0) {
+		pr_info("Downloading Firmware ...\n");
+	}
 	ret = wilc_wlan_firmware_download(wilc, wilc->firmware->data,
 					  wilc->firmware->size);
 	if (ret < 0)
 		goto fail;
+	if (wilc->chip != RIO_0) {
+		pr_info("Download Succeeded\n");
+	}
 
-	PRINT_INFO(vif->ndev, INIT_DBG, "Download Succeeded\n");
+
 
 fail:
 	release_firmware(wilc->firmware);
@@ -732,6 +761,37 @@ static int wlan_initialize_threads(struct net_device *dev)
 	return 0;
 }
 
+#ifdef RIO0_HOST_FW_UPGRADE
+int rio0_reset_sdio_driver(struct wilc *wilc, u32 type)
+{
+	int ret = 0;
+
+	ret = wilc->hif_func->hif_write_reg(wilc,
+					    wilc->vmm_ctl.host_vmm_tx_ctl,
+					    type);
+	if (ret)
+		pr_info("fail write reg host_vmm_ctl");
+
+	return 0;
+}
+
+int rio0_check_firmware_download(struct wilc *wl)
+{
+	if (wilc_wlan_get_firmware(wl)) {
+		//pr_err("Can't get firmware");
+		return 0;
+	}
+
+	if (wilc_firmware_download(wl) < 0) {
+		if (wl->chip != RIO_0) {		
+			pr_info("Failed to download firmware");
+		}
+	}
+
+	return 0;
+}
+#endif
+
 static int wilc_wlan_initialize(struct net_device *dev, struct wilc_vif *vif)
 {
 	int ret = 0;
@@ -766,16 +826,17 @@ static int wilc_wlan_initialize(struct net_device *dev, struct wilc_vif *vif)
 			goto fail_irq_init;
 		}
 
-		ret = wilc_wlan_get_firmware(dev);
-		if (ret) {
-			PRINT_ER(dev, "Can't get firmware\n");
-			goto fail_irq_enable;
-		}
-
-		ret = wilc_firmware_download(dev);
-		if (ret) {
-			PRINT_ER(dev, "Failed to download firmware\n");
-			goto fail_irq_enable;
+		if (wl->chip != RIO_0) {
+			ret = wilc_wlan_get_firmware(wl);
+			if (ret) {
+				PRINT_ER(dev, "Can't get firmware\n");
+				goto fail_irq_enable;
+			}
+			ret = wilc_firmware_download(wl);
+			if (ret) {
+				PRINT_ER(dev, "Failed to download firmware\n");
+				goto fail_irq_enable;
+			}
 		}
 
 		ret = wilc_start_firmware(dev);
@@ -783,8 +844,6 @@ static int wilc_wlan_initialize(struct net_device *dev, struct wilc_vif *vif)
 			PRINT_ER(dev, "Failed to start firmware\n");
 			goto fail_irq_enable;
 		}
-
-		wl->initialized = true;
 
 		if (wilc_wlan_cfg_get(vif, 1, WID_FIRMWARE_VERSION, 1, 0)) {
 			int size;
@@ -804,7 +863,6 @@ static int wilc_wlan_initialize(struct net_device *dev, struct wilc_vif *vif)
 			ret = -EIO;
 			goto fail_fw_start;
 		}
-
 		return 0;
 
 fail_fw_start:
@@ -848,7 +906,7 @@ static int wilc_mac_open(struct net_device *ndev)
 		return -ENODEV;
 	}
 
-	PRINT_INFO(ndev, INIT_DBG, "MAC OPEN[%p] %s\n", ndev, ndev->name);
+	pr_info("MAC OPEN[%p] %s chip %d\n", ndev, ndev->name, wl->chip);
 
 	if (wl->open_ifcs == 0)
 		wilc_bt_power_up(wl, DEV_WIFI);
@@ -884,10 +942,17 @@ static int wilc_mac_open(struct net_device *ndev)
 	netdev_dbg(ndev, "Mac address: %pM\n", ndev->dev_addr);
 
 	if (!is_valid_ether_addr(ndev->dev_addr)) {
-		PRINT_ER(ndev, "Wrong MAC address\n");
-		wilc_deinit_host_int(ndev);
-		wilc_wlan_deinitialize(ndev);
-		return -EINVAL;
+		if (wl->chip == RIO_0) {
+			//set the default MAC address
+			eth_hw_addr_set(ndev, default_mac);
+			PRINT_ER(ndev, "Mac not configured use default[%pM]\n",
+				 default_mac);
+			wilc_set_mac_address(vif, addr);
+		} else {
+			wilc_deinit_host_int(ndev);
+			wilc_wlan_deinitialize(ndev);
+			return -EINVAL;
+		}
 	}
 
 	mgmt_regs.interface_stypes = vif->mgmt_reg_stypes;
@@ -1081,10 +1146,10 @@ static int wilc_mac_close(struct net_device *ndev)
 	if (vif->ndev) {
 		netif_stop_queue(vif->ndev);
 
-		wilc_handle_disconnect(vif);
+	wilc_handle_disconnect(vif);
 
-		if (!recovery_on)
-			wilc_deinit_host_int(vif->ndev);
+	if (!recovery_on)
+		wilc_deinit_host_int(vif->ndev);
 	}
 
 	if (wl->open_ifcs == 0) {
@@ -1190,7 +1255,6 @@ void wilc_wfi_mgmt_rx(struct wilc *wilc, u8 *buff, u32 size, bool is_auth)
 		    vif->p2p_listen_state)
 			wilc_wfi_p2p_rx(vif, buff, size);
 
-
 		if (vif->monitor_flag)
 			wilc_wfi_monitor_rx(wilc->monitor_dev, buff, size);
 	}
@@ -1222,16 +1286,26 @@ void wilc_netdev_cleanup(struct wilc *wilc)
 
 	srcu_idx = srcu_read_lock(&wilc->srcu);
 	list_for_each_entry_rcu(vif, &wilc->vif_list, list) {
-		/* clear the mode */
-		wilc_set_operation_mode(vif, 0, 0, 0);
-		if (vif->ndev)
-			unregister_netdev(vif->ndev);
+		if (vif && vif->ndev) {
+			/* clear the mode */
+			wilc_set_operation_mode(vif, 0, 0, 0);
+			if (vif->ndev) {
+				PRINT_INFO(vif->ndev, INIT_DBG,
+					   "Unregistering netdev %p\n",
+					   vif->ndev);
+				unregister_netdev(vif->ndev);
+			}
+		}
 	}
 	srcu_read_unlock(&wilc->srcu, srcu_idx);
 
 	wilc_wfi_deinit_mon_interface(wilc, false);
-	destroy_workqueue(wilc->hif_workqueue);
-	wilc->hif_workqueue = NULL;
+	if (wilc->hif_workqueue) {
+		flush_workqueue(wilc->hif_workqueue);
+		destroy_workqueue(wilc->hif_workqueue);
+		wilc->hif_workqueue = NULL;
+	}
+	/* update the list */
 	while (ifc_cnt < WILC_NUM_CONCURRENT_IFC) {
 		mutex_lock(&wilc->vif_mutex);
 		if (wilc->vif_num <= 0) {

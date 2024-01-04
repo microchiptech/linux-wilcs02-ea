@@ -32,7 +32,7 @@ enum {
 };
 
 #define WILC_MAX_ASSOC_RESP_FRAME_SIZE   256
-extern uint32_t cfg_packet_timeout;
+extern u32 cfg_packet_timeout;
 
 struct rf_info {
 	u8 link_speed;
@@ -88,6 +88,7 @@ enum {
 };
 
 enum {
+	WILC_MAC_STATUS_PRE_INIT = -2,
 	WILC_MAC_STATUS_INIT = -1,
 	WILC_MAC_STATUS_DISCONNECTED = 0,
 	WILC_MAC_STATUS_CONNECTED = 1

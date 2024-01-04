@@ -33,6 +33,8 @@ extern int wait_for_recovery;
 #define ANT_SWTCH_SNGL_GPIO_CTRL		1
 #define ANT_SWTCH_DUAL_GPIO_CTRL		2
 
+#define RIO0_HOST_FW_UPGRADE
+
 struct wilc_wfi_stats {
 	unsigned long rx_packets;
 	unsigned long tx_packets;
@@ -303,6 +305,7 @@ struct wilc {
 	struct device *dt_dev;
 
 	enum wilc_chip_type chip;
+	struct wilc_vmm_ctl vmm_ctl;
 	struct wilc_power power;
 	uint8_t keep_awake[DEV_MAX];
 	struct mutex cs;
@@ -338,5 +341,6 @@ struct wilc_vif *wilc_netdev_ifc_init(struct wilc *wl, const char *name,
 				      bool rtnl_locked);
 int wilc_bt_power_up(struct wilc *wilc, int source);
 int wilc_bt_power_down(struct wilc *wilc, int source);
-
+int rio0_reset_sdio_driver(struct wilc *wilc, u32 type);
+int rio0_check_firmware_download(struct wilc *wl);
 #endif

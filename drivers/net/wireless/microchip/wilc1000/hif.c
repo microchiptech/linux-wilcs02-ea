@@ -404,12 +404,11 @@ static int wilc_send_connect_wid(struct wilc_vif *vif)
 	}
 	srcu_read_unlock(&vif->wilc->srcu, srcu_idx);
 
-
-        wid_list[wid_cnt].id = WID_SET_MFP;
-        wid_list[wid_cnt].type = WID_CHAR;
-        wid_list[wid_cnt].size = sizeof(char);
-        wid_list[wid_cnt].val = (s8 *)&conn_attr->mfp_type;
-        wid_cnt++;
+	wid_list[wid_cnt].id = WID_SET_MFP;
+	wid_list[wid_cnt].type = WID_CHAR;
+	wid_list[wid_cnt].size = sizeof(char);
+	wid_list[wid_cnt].val = (s8 *)&conn_attr->mfp_type;
+	wid_cnt++;
 
 	wid_list[wid_cnt].id = WID_INFO_ELEMENT_ASSOCIATE;
 	wid_list[wid_cnt].type = WID_BIN_DATA;
@@ -450,9 +449,9 @@ static int wilc_send_connect_wid(struct wilc_vif *vif)
 		goto error;
 	} else {
                 if (conn_attr->auth_type == WILC_FW_AUTH_SAE)
-                        hif_drv->hif_state = HOST_IF_EXTERNAL_AUTH;
+			hif_drv->hif_state = HOST_IF_EXTERNAL_AUTH;
                 else
-                        hif_drv->hif_state = HOST_IF_WAITING_CONN_RESP;
+			hif_drv->hif_state = HOST_IF_WAITING_CONN_RESP;
 	}
 
 	return 0;
@@ -850,12 +849,11 @@ static void handle_rcvd_gnrl_async_info(struct work_struct *work)
 		goto free_msg;
 	}
 
-
-        if (hif_drv->hif_state == HOST_IF_EXTERNAL_AUTH) {
-                cfg80211_external_auth_request(vif->ndev, &vif->auth,
+	if (hif_drv->hif_state == HOST_IF_EXTERNAL_AUTH) {
+		cfg80211_external_auth_request(vif->ndev, &vif->auth,
 					       GFP_KERNEL);
-                hif_drv->hif_state = HOST_IF_WAITING_CONN_RESP;
-        } else if (hif_drv->hif_state == HOST_IF_WAITING_CONN_RESP) {
+		hif_drv->hif_state = HOST_IF_WAITING_CONN_RESP;
+	} else if (hif_drv->hif_state == HOST_IF_WAITING_CONN_RESP) {
 		/* check connecting state before parsing the ASSOC response */
 		if (!vif->connecting)
 			goto free_msg;
