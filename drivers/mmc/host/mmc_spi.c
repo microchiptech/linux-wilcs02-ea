@@ -1265,7 +1265,8 @@ mmc_spi_detect_irq(int irq, void *mmc)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_HAS_DMA
+//#ifdef CONFIG_HAS_DMA
+#if 0
 static int mmc_spi_dma_alloc(struct mmc_spi_host *host)
 {
 	struct spi_device *spi = host->spi;
