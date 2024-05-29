@@ -213,32 +213,34 @@
 #define WILC_CORTUS_RESET_MUX_SEL	0x1118
 #define WILC_CORTUS_BOOT_REGISTER	0xc0000
 #define WILC3000_CHIP_ID		0x3b0000
-#define RIO0_CHIP_ID			0x1
-#define RIO0_FW_VERSION			0x2
+#define WILC_S02_CHIP_ID			0x1
+#define WILC_S02_FW_VERSION			0x2
 
-/* Rio0- MSG Handler */
-#define RIO0_CANCEL_RX			0x0
-#define RIO0_START_WLAN			0x1
-#define RIO0_HOST_MALLOC		0x2
-#define RIO0_FW_UPGRADE			0x3
-#define RIO0_SOFT_RESET			0x4
-#define RIO0_SDIO_TEST			0x6
+/* WILC_S02- MSG Handler */
+#define WILC_S02_CANCEL_RX			0x0
+#define WILC_S02_START_WLAN			0x1
+#define WILC_S02_HOST_MALLOC		0x2
+#define WILC_S02_FW_UPGRADE			0x3
+#define WILC_S02_SOFT_RESET			0x4
+#define WILC_S02_SDIO_TEST			0x6
+#define WILC_S02_SDIO_VMM_CLEAR		0x7
 
 /* type of soft resets */
-#define RIO0_RAM_RESET			BIT(0)
-#define RIO0_FLASH_RESET		BIT(1)
-#define RIO0_WLAN_RESET			BIT(2)
+#define WILC_S02_RAM_RESET			BIT(0)
+#define WILC_S02_FLASH_RESET		BIT(1)
+#define WILC_S02_WLAN_RESET			BIT(2)
 
-#define RIO0_REG_ADDR_SHADOW_RX_TBL	0x6
-#define RIO0_REG_ADDR_FW_UPDATE		0x5
-#define RIO0_REG_ADDR_CFG		0x8
+#define WILC_S02_REG_ADDR_FW_UPDATE				0x5
+#define WILC_S02_REG_ADDR_SHADOW_RX_TBL			0x6
+
+#define WILC_S02_REG_ADDR_CFG		0x8
 
 
 #define WILC_CORTUS_BOOT_FROM_IRAM	0x71
 
 #define WILC_1000_BASE_ID		0x100000
 #define WILC_3000_BASE_ID		0x300000
-#define RIO0_BASE_ID			0x000053
+#define WILC_S02_BASE_ID		0x000053
 
 
 #define WILC_CHIP_REV_FIELD		GENMASK(11, 0)
@@ -253,9 +255,9 @@ static inline bool is_wilc3000(u32 id)
 	return (id & (~WILC_CHIP_REV_FIELD)) == WILC_3000_BASE_ID;
 }
 
-static inline bool is_rio0_chip(u32 id)
+static inline bool is_wilcs02_chip(u32 id)
 {
-	return (id & (WILC_CHIP_REV_FIELD)) == RIO0_BASE_ID;
+	return (id & (WILC_CHIP_REV_FIELD)) == WILC_S02_BASE_ID;
 }
 
 
@@ -428,7 +430,7 @@ struct rxq_entry_t {
 enum wilc_chip_type {
 	WILC_1000,
 	WILC_3000,
-	RIO_0,
+	WILC_S02,
 };
 
 struct wilc_vmm_ctl {
@@ -496,7 +498,7 @@ struct wilc_vif;
 int wilc_wlan_firmware_download(struct wilc *wilc, const u8 *buffer,
 				u32 buffer_size);
 int wilc_wlan_start(struct wilc *wilc);
-int wilc_wlan_start_rio0_fw(struct wilc *wilc);
+int wilc_wlan_start_wilcs02_fw(struct wilc *wilc);
 int wilc_wlan_stop(struct wilc *wilc, struct wilc_vif *vif);
 int wilc_wlan_txq_add_net_pkt(struct net_device *dev,
 			      struct tx_complete_data *tx_data, u8 *buffer,

@@ -235,4 +235,6 @@ int wilc_set_default_mgmt_key_index(struct wilc_vif *vif, u8 index);
 void wilc_handle_disconnect(struct wilc_vif *vif);
 int wilc_of_parse_power_pins(struct wilc *wilc);
 void wilc_wlan_power(struct wilc *wilc, bool on);
+void wilc_wlan_power_deinit(struct wilc *wilc);
+
 #endif

@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2012 - 2023 Microchip Technology Inc., and its subsidiaries.
+ * All rights reserved.
+ */
+
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/version.h>
@@ -17,34 +23,28 @@
  */
 int wilc_of_parse_power_pins(struct wilc *wilc)
 {
-	static const struct wilc_power_gpios default_gpios[] = {
-		{ .reset = GPIO_NUM_RESET,	.chip_en = GPIO_NUM_CHIP_EN, },
-	};
-	struct device_node *of = wilc->dt_dev->of_node;
 	struct wilc_power *power = &wilc->power;
-	const struct wilc_power_gpios *gpios = &default_gpios[0];
-	int ret;
 
-	power->gpios.reset = of_get_named_gpio_flags(of, "reset-gpios", 0,
-						     NULL);
-	if (!gpio_is_valid(power->gpios.reset))
-		power->gpios.reset = gpios->reset;
-
-	power->gpios.chip_en = of_get_named_gpio_flags(of, "chip_en-gpios", 0,
-						       NULL);
-	if (!gpio_is_valid(power->gpios.chip_en))
-		power->gpios.chip_en = gpios->chip_en;
-
-	if (!gpio_is_valid(power->gpios.chip_en) ||
-			!gpio_is_valid(power->gpios.reset))
-		return -EINVAL;
-
-	ret = devm_gpio_request(wilc->dev, power->gpios.chip_en, "CHIP_EN");
-	if (ret)
-		return ret;
-
-	ret = devm_gpio_request(wilc->dev, power->gpios.reset, "RESET");
-	return ret;
+	/* get chip_en pin and deassert it (if it is defined): */
+	power->gpios.chip_en = devm_gpiod_get_optional(wilc->dev,
+						       "chip_en", GPIOD_OUT_LOW);
+	/* get RESET pin and assert it (if it is defined): */
+	if (power->gpios.chip_en) {
+		pr_info("%s got chip_en gpio", __func__);
+		/* if enable pin exists, reset must exist as well */
+		power->gpios.reset = devm_gpiod_get(wilc->dt_dev,
+						    "reset", GPIOD_OUT_HIGH);
+		if (IS_ERR(power->gpios.reset)) {
+			pr_err("missing reset gpio.\n");
+			return PTR_ERR(power->gpios.reset);
+		}
+	} else {
+		power->gpios.reset = devm_gpiod_get_optional(wilc->dt_dev,
+							     "reset", GPIOD_OUT_HIGH);
+		if (power->gpios.reset)
+			pr_info("%s got reset gpio", __func__);
+	}
+	return 0;
 }
 
 /**
@@ -57,20 +57,24 @@ int wilc_of_parse_power_pins(struct wilc *wilc)
  */
 void wilc_wlan_power(struct wilc *wilc, bool on)
 {
-	if (!gpio_is_valid(wilc->power.gpios.chip_en) ||
-	    !gpio_is_valid(wilc->power.gpios.reset)) {
-		/* In case SDIO power sequence driver is used to power this
-		 * device then the powering sequence is handled by the bus
-		 * via pm_runtime_* functions. */
+	if (!wilc->power.gpios.chip_en || !wilc->power.gpios.reset)
 		return;
-	}
 
 	if (on) {
-		gpio_direction_output(wilc->power.gpios.chip_en, 1);
+		gpiod_set_value(wilc->power.gpios.chip_en, 1);
 		mdelay(5);
-		gpio_direction_output(wilc->power.gpios.reset, 1);
+		gpiod_set_value(wilc->power.gpios.reset, 1);
 	} else {
-		gpio_direction_output(wilc->power.gpios.chip_en, 0);
-		gpio_direction_output(wilc->power.gpios.reset, 0);
+		gpiod_set_value(wilc->power.gpios.chip_en, 0);
+		gpiod_set_value(wilc->power.gpios.reset, 0);
 	}
+}
+
+void wilc_wlan_power_deinit(struct wilc *wilc)
+{
+	if (wilc->power.gpios.chip_en)
+		devm_gpiod_put(wilc->dt_dev, wilc->power.gpios.chip_en);
+
+	if (wilc->power.gpios.reset)
+		devm_gpiod_put(wilc->dt_dev, wilc->power.gpios.reset);
 }
